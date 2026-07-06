@@ -1,0 +1,91 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [development, uat, production]
+  pull_request:
+    branches: [development, uat, master, production]
+
+jobs:
+  build-and-lint:
+    name: Build and Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate HTML structure
+        run: |
+          echo "Checking required files exist..."
+          test -f src/index.html
+          test -f src/style.css
+          test -f src/script.js
+          echo "All required files present."
+
+      - name: Install HTML linter
+        run: npm install -g htmlhint
+
+      - name: Run HTML lint
+        run: htmlhint src/index.html
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-build
+          path: src/
+
+  deploy-dev:
+    name: Deploy to Development
+    needs: build-and-lint
+    if: github.ref == 'refs/heads/development' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: site-build
+          path: dist/
+      - name: Simulate dev deployment
+        run: |
+          echo "Deploying to DEVELOPMENT environment (simulated — no server yet, Stage 3 will add real target)"
+          ls -la dist/
+
+  deploy-uat:
+    name: Deploy to UAT
+    needs: build-and-lint
+    if: github.ref == 'refs/heads/uat' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: uat
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: site-build
+          path: dist/
+      - name: Simulate UAT deployment
+        run: |
+          echo "Deploying to UAT environment (simulated, approval gate already satisfied to reach this step)"
+          ls -la dist/
+
+  deploy-prod:
+    name: Deploy to Production (GitHub Pages)
+    needs: build-and-lint
+    if: github.ref == 'refs/heads/production' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: src/
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
