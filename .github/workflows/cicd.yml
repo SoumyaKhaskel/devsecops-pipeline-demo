@@ -14,25 +14,38 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Validate HTML structure
-        run: |
-          echo "Checking required files exist..."
-          test -f src/index.html
-          test -f src/style.css
-          test -f src/script.js
-          echo "All required files present."
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
 
-      - name: Install HTML linter
-        run: npm install -g htmlhint
+      - name: Build and test backend (Spring Boot)
+        working-directory: backend
+        run: ./mvnw clean package
 
-      - name: Run HTML lint
-        run: htmlhint src/index.html
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
-      - name: Upload build artifact
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Lint frontend
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Upload frontend build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: site-build
-          path: src/
+          name: frontend-build
+          path: frontend/dist/
 
   deploy-dev:
     name: Deploy to Development
@@ -41,10 +54,10 @@ jobs:
     runs-on: ubuntu-latest
     environment: development
     steps:
-      - name: Download build artifact
+      - name: Download frontend build artifact
         uses: actions/download-artifact@v4
         with:
-          name: site-build
+          name: frontend-build
           path: dist/
       - name: Simulate dev deployment
         run: |
@@ -58,10 +71,10 @@ jobs:
     runs-on: ubuntu-latest
     environment: uat
     steps:
-      - name: Download build artifact
+      - name: Download frontend build artifact
         uses: actions/download-artifact@v4
         with:
-          name: site-build
+          name: frontend-build
           path: dist/
       - name: Simulate UAT deployment
         run: |
@@ -80,12 +93,28 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: src/
+          path: frontend/dist/
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
