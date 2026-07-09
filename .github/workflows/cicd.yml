@@ -41,6 +41,12 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+      - name: Upload backend jar artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-jar
+          path: backend/target/*.jar
+
       - name: Upload frontend build artifact
         uses: actions/upload-artifact@v4
         with:
@@ -61,7 +67,7 @@ jobs:
           path: dist/
       - name: Simulate dev deployment
         run: |
-          echo "Deploying to DEVELOPMENT environment (simulated — no server yet, Stage 3 will add real target)"
+          echo "Deploying to DEVELOPMENT environment (simulated — no dev server target defined yet)"
           ls -la dist/
 
   deploy-uat:
@@ -82,39 +88,61 @@ jobs:
           ls -la dist/
 
   deploy-prod:
-    name: Deploy to Production (GitHub Pages)
+    name: Deploy to Production (EC2)
     needs: build-and-lint
     if: github.ref == 'refs/heads/production' && github.event_name == 'push'
     runs-on: ubuntu-latest
     environment: production
-    permissions:
-      pages: write
-      id-token: write
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Download backend jar artifact
+        uses: actions/download-artifact@v4
         with:
-          node-version: '20'
+          name: backend-jar
+          path: backend-jar/
 
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
-
-      - name: Build frontend
-        working-directory: frontend
-        run: npm run build
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+      - name: Download frontend build artifact
+        uses: actions/download-artifact@v4
         with:
-          path: frontend/dist/
+          name: frontend-build
+          path: frontend-dist/
 
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Set release timestamp
+        id: vars
+        run: echo "RELEASE_NAME=backend-$(date +%Y%m%d-%H%M%S).jar" >> $GITHUB_OUTPUT
+
+      - name: Copy backend jar to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "backend-jar/*.jar"
+          target: "/opt/devsecops-backend/releases/"
+          strip_components: 1
+
+      - name: Copy frontend build to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "frontend-dist/*"
+          target: "/var/www/devsecops-frontend/"
+          strip_components: 1
+
+      - name: Symlink swap, restart service, health check
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/devsecops-backend
+            LATEST_JAR=$(ls -t releases/*.jar | head -n 1)
+            ln -sf "$LATEST_JAR" current.jar
+            echo "Symlinked current.jar -> $LATEST_JAR"
+            sudo systemctl restart devsecops-backend
+            sleep 5
+            curl -f http://localhost:8080/api/status || (echo "Health check failed!" && exit 1)
+            echo "Deployment successful and health check passed."
