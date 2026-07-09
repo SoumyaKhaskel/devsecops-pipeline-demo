@@ -143,6 +143,17 @@ jobs:
             ln -sf "$LATEST_JAR" current.jar
             echo "Symlinked current.jar -> $LATEST_JAR"
             sudo systemctl restart devsecops-backend
-            sleep 5
-            curl -f http://localhost:8080/api/status || (echo "Health check failed!" && exit 1)
-            echo "Deployment successful and health check passed."
+
+            echo "Waiting for backend to become healthy..."
+            for i in 1 2 3 4 5 6 7 8 9 10; do
+              if curl -f -s http://localhost:8080/api/status > /dev/null; then
+                echo "Health check passed on attempt $i."
+                echo "Deployment successful."
+                exit 0
+              fi
+              echo "Attempt $i failed, retrying in 3s..."
+              sleep 3
+            done
+
+            echo "Health check failed after 10 attempts!"
+            exit 1
