@@ -91,9 +91,43 @@ jobs:
           path: semgrep.sarif
         continue-on-error: true
 
+  security-score:
+    name: Security Score Aggregation
+    needs: [dependency-scan, sast-scan]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download Trivy report
+        uses: actions/download-artifact@v4
+        with:
+          name: trivy-dependency-report
+          path: reports/
+
+      - name: Download Semgrep report
+        uses: actions/download-artifact@v4
+        with:
+          name: semgrep-report
+          path: reports/
+        continue-on-error: true
+
+      - name: Run aggregation script
+        run: |
+          python3 scripts/aggregate_security_report.py \
+            reports/trivy-report.json \
+            reports/semgrep.sarif \
+            security-report.json
+
+      - name: Upload unified security report
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-report
+          path: security-report.json
+
   build-and-lint:
     name: Build and Lint
-    needs: [secret-scan, dependency-scan, sast-scan]
+    needs: [secret-scan, dependency-scan, sast-scan, security-score]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
