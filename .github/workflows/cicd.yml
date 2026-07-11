@@ -29,44 +29,40 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
+      - name: Cache Trivy DB
+        uses: actions/cache@v4
         with:
-          distribution: 'temurin'
-          java-version: '21'
+          path: ~/.cache/trivy
+          key: trivy-db-${{ github.run_id }}
+          restore-keys: |
+            trivy-db-
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@0.28.0
         with:
-          node-version: '20'
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'json'
+          output: 'trivy-report.json'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+          cache-dir: '~/.cache/trivy'
 
-      - name: Run npm audit (frontend)
-        working-directory: frontend
-        run: |
-          npm ci
-          npm audit --audit-level=high --json > npm-audit-report.json || true
-          echo "----- npm audit summary -----"
-          npm audit --audit-level=high || echo "npm audit found high/critical issues (see report artifact)"
+      - name: Print Trivy summary
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+          cache-dir: '~/.cache/trivy'
 
-      - name: Upload npm audit report
+      - name: Upload Trivy report
         uses: actions/upload-artifact@v4
         with:
-          name: npm-audit-report
-          path: frontend/npm-audit-report.json
-
-      - name: Run OWASP Dependency-Check (backend)
-        working-directory: backend
-        run: |
-          ./mvnw org.owasp:dependency-check-maven:check \
-            -DfailBuildOnCVSS=9 \
-            -Dformat=JSON \
-            -DsuppressionFile=dependency-check-suppressions.xml || true
-
-      - name: Upload OWASP Dependency-Check report
-        uses: actions/upload-artifact@v4
-        with:
-          name: owasp-dependency-check-report
-          path: backend/target/dependency-check-report.json
+          name: trivy-dependency-report
+          path: trivy-report.json
 
   build-and-lint:
     name: Build and Lint
