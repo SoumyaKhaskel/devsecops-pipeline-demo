@@ -64,9 +64,36 @@ jobs:
           name: trivy-dependency-report
           path: trivy-report.json
 
+  sast-scan:
+    name: SAST Scan
+    needs: secret-scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: >-
+            p/java
+            p/javascript
+            p/react
+            p/owasp-top-ten
+        env:
+          SEMGREP_RULES: p/java p/javascript p/react p/owasp-top-ten
+
+      - name: Upload Semgrep report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-report
+          path: semgrep.sarif
+        continue-on-error: true
+
   build-and-lint:
     name: Build and Lint
-    needs: [secret-scan, dependency-scan]
+    needs: [secret-scan, dependency-scan, sast-scan]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
