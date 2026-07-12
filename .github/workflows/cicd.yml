@@ -125,6 +125,18 @@ jobs:
           name: security-report
           path: security-report.json
 
+      - name: Enforce security gate
+        run: |
+          SCORE=$(python3 -c "import json; print(json.load(open('security-report.json'))['security_score'])")
+          echo "Computed security score: $SCORE / 100"
+          THRESHOLD=70
+          if [ "$SCORE" -lt "$THRESHOLD" ]; then
+            echo "BLOCKED: security score ($SCORE) is below the required threshold ($THRESHOLD)."
+            echo "Review the security-report artifact and remediate findings before merging."
+            exit 1
+          fi
+          echo "Security gate passed: score meets or exceeds threshold ($THRESHOLD)."
+
   build-and-lint:
     name: Build and Lint
     needs: [secret-scan, dependency-scan, sast-scan, security-score]
@@ -276,3 +288,14 @@ jobs:
 
             echo "Health check failed after 10 attempts!"
             exit 1
+
+      - name: Write audit log entry
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            echo "$(date -u +'%Y-%m-%dT%H:%M:%SZ') | DEPLOY | actor=${{ github.actor }} | commit=${{ github.sha }} | branch=production | status=SUCCESS" >> /opt/devsecops-backend/audit.log
+            echo "Audit log entry written."
+            tail -5 /opt/devsecops-backend/audit.log
