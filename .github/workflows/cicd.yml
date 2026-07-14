@@ -125,6 +125,25 @@ jobs:
           name: security-report
           path: security-report.json
 
+      - name: Push report to dashboard database
+        continue-on-error: true
+        run: |
+          SCORE=$(python3 -c "import json; print(json.load(open('security-report.json'))['security_score'])")
+          TOTAL=$(python3 -c "import json; print(json.load(open('security-report.json'))['total_findings'])")
+          SEVERITY=$(python3 -c "import json; print(json.dumps(json.load(open('security-report.json'))['severity_summary']))")
+          FINDINGS=$(python3 -c "import json; print(json.dumps(json.load(open('security-report.json'))['findings']))")
+
+          curl -sf -X POST "http://${{ secrets.EC2_HOST }}/api/security-reports" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"branch\": \"${{ github.ref_name }}\",
+              \"commit_sha\": \"${{ github.sha }}\",
+              \"security_score\": $SCORE,
+              \"total_findings\": $TOTAL,
+              \"severity_summary\": $SEVERITY,
+              \"findings\": $FINDINGS
+            }" || echo "Dashboard ingestion failed (non-blocking) — check EC2 backend availability."
+
       - name: Enforce security gate
         run: |
           SCORE=$(python3 -c "import json; print(json.load(open('security-report.json'))['security_score'])")
@@ -141,6 +160,20 @@ jobs:
     name: Build and Lint
     needs: [secret-scan, dependency-scan, sast-scan, security-score]
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: devsecops_dashboard
+          POSTGRES_USER: devsecops_app
+          POSTGRES_PASSWORD: ci_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -153,6 +186,12 @@ jobs:
 
       - name: Build and test backend (Spring Boot)
         working-directory: backend
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: devsecops_dashboard
+          DB_USER: devsecops_app
+          DB_PASSWORD: ci_test_password
         run: ./mvnw clean package
 
       - name: Set up Node.js
@@ -299,3 +338,15 @@ jobs:
             echo "$(date -u +'%Y-%m-%dT%H:%M:%SZ') | DEPLOY | actor=${{ github.actor }} | commit=${{ github.sha }} | branch=production | status=SUCCESS" >> /opt/devsecops-backend/audit.log
             echo "Audit log entry written."
             tail -5 /opt/devsecops-backend/audit.log
+
+      - name: Push deployment record to dashboard database
+        continue-on-error: true
+        run: |
+          curl -sf -X POST "http://${{ secrets.EC2_HOST }}/api/deployments" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"actor\": \"${{ github.actor }}\",
+              \"commit_sha\": \"${{ github.sha }}\",
+              \"branch\": \"production\",
+              \"status\": \"SUCCESS\"
+            }" || echo "Dashboard ingestion failed (non-blocking)."
