@@ -160,6 +160,20 @@ jobs:
     name: Build and Lint
     needs: [secret-scan, dependency-scan, sast-scan, security-score]
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: devsecops_dashboard
+          POSTGRES_USER: devsecops_app
+          POSTGRES_PASSWORD: ci_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -172,6 +186,12 @@ jobs:
 
       - name: Build and test backend (Spring Boot)
         working-directory: backend
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: devsecops_dashboard
+          DB_USER: devsecops_app
+          DB_PASSWORD: ci_test_password
         run: ./mvnw clean package
 
       - name: Set up Node.js
