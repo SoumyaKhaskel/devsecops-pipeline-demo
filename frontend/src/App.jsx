@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import './App.css'
+import Dashboard from './Dashboard'
 
 function App() {
   const [status, setStatus] = useState(null)
@@ -13,17 +14,21 @@ function App() {
   }, [])
 
   return (
-    <div style={{ fontFamily: 'Arial, sans-serif', textAlign: 'center', marginTop: '80px' }}>
-      <h1>DevSecOps Pipeline Demo — Stage 3</h1>
-      {error && <p style={{ color: 'red' }}>Backend not reachable: {error}</p>}
-      {status && (
-        <div>
-          <p>Service: {status.service}</p>
-          <p>Status: {status.status}</p>
-          <p>Timestamp: {status.timestamp}</p>
-        </div>
-      )}
-      {!status && !error && <p>Loading backend status...</p>}
+    <div className="app-shell">
+      <header className="app-header">
+        <p className="eyebrow">Continuous Security Verification</p>
+        <h1 className="app-title">DevSecOps Pipeline Dashboard</h1>
+
+        {error && <p className="error-banner">Backend not reachable: {error}</p>}
+        {status && (
+          <div className="live-indicator">
+            <span className="live-dot" />
+            <span>{status.service} — {status.status}</span>
+          </div>
+        )}
+      </header>
+
+      <Dashboard />
     </div>
   )
 }
